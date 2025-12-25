@@ -16,15 +16,12 @@ namespace ChessServer
     class Server
     {
         private TcpListener? listener;
-        private List<GameSession> games = new();
         private Queue<TcpClient> waitingPlayers = new();
+        private List<GameSession> games = new();
 
         public void Start()
         {
-            int port = int.Parse(
-                Environment.GetEnvironmentVariable("PORT") ?? "5000"
-            );
-
+            int port = int.Parse(Environment.GetEnvironmentVariable("PORT") ?? "5000");
             listener = new TcpListener(IPAddress.Any, port);
             listener.Start();
             Console.WriteLine($"Chess Server started on port {port}");
@@ -32,21 +29,53 @@ namespace ChessServer
             while (true)
             {
                 var client = listener.AcceptTcpClient();
-                Console.WriteLine("Client connected");
+                // Don't enqueue yet! Hand off to a gatekeeper task.
+                Task.Run(() => Gatekeeper(client));
+            }
+        }
 
-                waitingPlayers.Enqueue(client);
+        private async Task Gatekeeper(TcpClient client)
+        {
+            try
+            {
+                // Set a very short timeout for the handshake (e.g., 2 seconds)
+                // Health checks and bots usually stay silent or send junk.
+                client.ReceiveTimeout = 2000;
 
-                if (waitingPlayers.Count >= 2)
+                using (var reader = new StreamReader(client.GetStream(), Encoding.UTF8, leaveOpen: true))
                 {
-                    var white = waitingPlayers.Dequeue();
-                    var black = waitingPlayers.Dequeue();
+                    // Wait for the secret line
+                    string? handshake = await reader.ReadLineAsync();
 
-                    var game = new GameSession(white, black);
-                    games.Add(game);
-                    Task.Run(() => game.Start());
+                    if (handshake != null && handshake.Trim() == "CHESS_V1_START")
+                    {
+                        Console.WriteLine("Verified player joined.");
 
-                    Console.WriteLine("Game started between two players");
+                        // ONLY NOW do we add them to the game queue
+                        lock (waitingPlayers)
+                        {
+                            waitingPlayers.Enqueue(client);
+                            if (waitingPlayers.Count >= 2)
+                            {
+                                var white = waitingPlayers.Dequeue();
+                                var black = waitingPlayers.Dequeue();
+                                var game = new GameSession(white, black);
+                                games.Add(game);
+                                Task.Run(() => game.Start());
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // It's a bot or health check. Kill it silently.
+                        client.Close();
+                    }
                 }
+            }
+            catch
+            {
+                // Timeout or error? Close the connection.
+                client.Close();
             }
         }
     }
@@ -66,6 +95,9 @@ namespace ChessServer
         {
             whiteClient = white;
             blackClient = black;
+
+            whiteClient.ReceiveTimeout = 0;
+            blackClient.ReceiveTimeout = 0;
 
             whiteReader = new StreamReader(whiteClient.GetStream(), Encoding.UTF8);
             whiteWriter = new StreamWriter(whiteClient.GetStream(), Encoding.UTF8) { AutoFlush = true };

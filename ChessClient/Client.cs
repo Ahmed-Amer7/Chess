@@ -17,20 +17,20 @@ namespace ChessClient
                 serverIp = "127.0.0.1";
             }
 
-            Client client = new(serverIp, 5000);
+            Client client = new(serverIp, 443);
             client.Connect();
         }
     }
 
     class Client
     {
-        private TcpClient tcpClient;
-        private StreamReader reader;
-        private StreamWriter writer;
-        private string serverIp;
-        private int port;
+        private TcpClient? tcpClient;
+        private StreamReader? reader;
+        private StreamWriter? writer;
+        private readonly string serverIp;
+        private readonly int port;
         private PieceColor myColor;
-        private List<List<Piece?>> board = new();
+        private readonly List<List<Piece?>> board = [];
 
         public Client(string ip, int p)
         {
@@ -58,6 +58,8 @@ namespace ChessClient
                 tcpClient = new TcpClient(serverIp, port);
                 reader = new StreamReader(tcpClient.GetStream(), Encoding.UTF8);
                 writer = new StreamWriter(tcpClient.GetStream(), Encoding.UTF8) { AutoFlush = true };
+
+                writer.WriteLine("CHESS_V1_START");
 
                 Console.WriteLine("Connected to server. Waiting for opponent...");
 
@@ -214,12 +216,12 @@ namespace ChessClient
 
         private void SendMessage(string message)
         {
-            writer.WriteLine(message);
+            writer?.WriteLine(message);
         }
 
         private string ReceiveMessage()
         {
-            return reader.ReadLine() ?? "";
+            return reader?.ReadLine() ?? "";
         }
     }
 
