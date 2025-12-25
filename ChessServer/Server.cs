@@ -29,7 +29,6 @@ namespace ChessServer
             while (true)
             {
                 var client = listener.AcceptTcpClient();
-                // Don't enqueue yet! Hand off to a gatekeeper task.
                 Task.Run(() => Gatekeeper(client));
             }
         }
@@ -38,8 +37,6 @@ namespace ChessServer
         {
             try
             {
-                // Set a very short timeout for the handshake (e.g., 2 seconds)
-                // Health checks and bots usually stay silent or send junk.
                 client.ReceiveTimeout = 2000;
 
                 using (var reader = new StreamReader(client.GetStream(), Encoding.UTF8, leaveOpen: true))
@@ -67,14 +64,12 @@ namespace ChessServer
                     }
                     else
                     {
-                        // It's a bot or health check. Kill it silently.
                         client.Close();
                     }
                 }
             }
             catch
             {
-                // Timeout or error? Close the connection.
                 client.Close();
             }
         }

@@ -17,7 +17,7 @@ namespace ChessClient
                 serverIp = "127.0.0.1";
             }
 
-            Client client = new(serverIp, 443);
+            Client client = new(serverIp, 19509);
             client.Connect();
         }
     }
